@@ -1,0 +1,60 @@
+image: maven:latest
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+cache:
+  key: all
+  paths:
+    - .m2/repository/
+    - target/
+stages:
+  - pull-image-to-EC2
+
+######################################################################
+# Build                                                           #
+######################################################################
+build:app:
+  stage: build
+  script:
+    - mvn $MAVEN_CLI_OPTS clean install 
+
+#####################################################################
+#Security                                                           #
+#####################################################################
+security:dependency-check:
+  stage: security-code
+  cache:
+    paths:
+      - dependency-cache/*
+  script:
+    - mvn dependency-check:check
+  needs: [ "build:app" ]
+
+#######################################################################
+#Create Docker image                                                  #
+#######################################################################
+build-image:build-docker-image:
+  stage: build-docker-image
+  script:
+    - docker build -t testcicd .
+
+#######################################################################
+#Push docker images                                                   #
+#######################################################################
+push-image:push-image-to-docker-hub:
+  stage: push-image-to-docker-hub
+  before_script:
+    - docker login -u "$DOCKER_HUB_USERNAME" -p "$DOCKER_HUB_PASSWORD"
+  script:
+    - docker tag testcicd "$DOCKER_HUB_USERNAME"/testcicd:v1
+    - docker push minhdang2001/testcicd:v1
+
+#######################################################################
+#Pull docker images to EC2                                            #
+#######################################################################
+Deploy-to-Docker-in-EC2:pull-run-image-to-EC2:
+  stage: pull-image-to-EC2
+  script:
+  # ssh to ec2 and pull
+    - ssh -o StrictHostKeyChecking=no -i /home/minh.pem -t -t ec2-user@3.101.107.249  'docker run -d -p 80:80 minhdang2001/testcicd:v1'
